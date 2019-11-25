@@ -31,24 +31,23 @@ after1week = function(response,nweek,size){
   nsim=100
   print(size)
   if (size>0){
-    week1after = sample(18,10*nsim,replace = TRUE,prob=c(response[nweek-1,]))
-    week = true_fatal
+    week1after = sample(18,10*nsim,replace = TRUE,prob = c(response[nweek-1,]))
+    week = c(rep(0,18))
     names(week)=c(1:18)
     t = unclass(table(week1after))
     print("..")
     print(t)
-    mat = matrix(,nrow=nsim,ncol = 18)
+    mat = matrix(,nrow = nsim,ncol = 18)
     for (j in 1:nsim){
       for (i in names(t)){
         print(i)
         mat[j,as.numeric(i)] = sum(rbinom(t[[i]],1,true_fatal[[as.numeric(i)]]))/(t[[i]])
       # week[i] = sum(rbinom(t[[i]],1,true_fatal[[as.numeric(i)]]))/(t[[i]])
       }
+    }
     t1 = unclass(table(t(apply(mat, 1, order)[ 1, ])))
     for (i in names(t1)){
-      week[i]=t1[[]]
-    }
-    
+      week[i]=t1[[i]]/nsim
     }
     response = rbind(response,week)
     nweek=nweek+1
@@ -61,6 +60,9 @@ after1week = function(response,nweek,size){
 }  
 
 true_fatal=c(rep(0.15,6),rep(0.4,12))
+ntrt=18
+nweeks=2
+size=250
 instance(250,true_fatal,18)
 after1week(response,2,250)
 ```
