@@ -31,11 +31,19 @@ instance=function(size,true_fatal,ntrt){
 
 after1week = function(response,nweek,size){
   nsim=100
+  Primary_agent = c(rep("P1",6),rep("P2",5),rep("P3",4), rep("P4",3))
+  agent = c("P1", "P2", "P3", "P4", "S1", "S2", "P2", "P3", "P4", "S1", "S2", "P3", "P4", "S1", "S2", "P4", "S1", "S2")
+  df = data.frame(Primary_agent,agent)
   print(size)
   if (size>0){
     week1after = sample(18,10*nsim,replace = TRUE,prob = c(response[nweek-1,]))#need some modification here update start at week3
     week = c(rep(0,18))
     names(week)=c(1:18)
+    newt=data.frame(table(week1after))
+    newt = newt %>% 
+      rowwise() %>% 
+      mutate(response = sum(rbinom(Freq,1,true_fatal[week1after])))
+    stan = cbind(newt,df)
     t = unclass(table(week1after))
     #print("..")
     #print(t)
@@ -62,9 +70,21 @@ after1week = function(response,nweek,size){
 
 true_fatal=c(rep(0.15,6),rep(0.4,12))
 ntrt=18
-nweeks=2
+nweek=2
 size=250
 instance(250,true_fatal,18)
 after1week(response,2,250)
+Primary_agent = c(rep("P1",6),rep("P2",5),rep("P3",4), rep("P4",3))
+agent = c("P1", "P2", "P3", "P4", "S1", "S2", "P2", "P3", "P4", "S1", "S2", "P3", "P4", "S1", "S2", "P4", "S1", "S2")
+df = data.frame(Primary_agent,agent)
+model.matrix(~agent,df)
+
+library(rstan)
+ 
+# the regimen number is different from original. how to get y[i]?
+stan_data = list(N = 18, X = model.matrix(~agent, data = stan), y = stan$response,S = stan$Freq,D=4,M=18) 
+stan_fit = stan(file = "./project_LogisticHierarchical.stan", data = stan_data,warmup = 50, iter = 100,seed = 1)
+list = rstan::extract(stan_fit)
+list
 ```
 
