@@ -1,0 +1,154 @@
+---
+title: "P8133 Project"
+author: "haokun yuan"
+date: "11/24/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+
+# may need to calculate # of people in each in arm
+
+# one simulation
+instance=function(size,true_fatal,ntrt){
+  names(true_fatal)= c(1:ntrt)
+  nsim=100
+  week1 = sample(18,30*nsim,replace = TRUE)
+  size = size-30
+  week = true_fatal
+  names(week)=c(1:18)
+  t = unclass(table(week1))
+  for (i in names(t)){
+    #print(i)
+    week[i] = sum(rbinom(t[[i]],1,true_fatal[[as.numeric(i)]]))/(t[[i]])
+  }
+  response = rbind(true_fatal,week)
+  after1week(response,2,size)
+}
+
+after1week = function(response,nweek,size){
+  nsim=100
+  Primary_agent = c(rep("P1",6),rep("P2",5),rep("P3",4), rep("P4",3))
+  agent = c("P1", "P2", "P3", "P4", "S1", "S2", "P2", "P3", "P4", "S1", "S2", "P3", "P4", "S1", "S2", "P4", "S1", "S2")
+  df = data.frame(Primary_agent,agent)
+  print(size)
+  if (size>0){
+    week1after = sample(18,10*nsim,replace = TRUE,prob = c(response[nweek-1,]))#need some modification here update start at week3
+    week = c(rep(0,18))
+    names(week)=c(1:18)
+    newt=data.frame(table(week1after))
+    newt = newt %>% 
+      rowwise() %>% 
+      mutate(response = sum(rbinom(Freq,1,true_fatal[week1after])))
+    stan = cbind(newt,df)
+    t = unclass(table(week1after))
+    #print("..")
+    #print(t)
+    mat = matrix(,nrow = nsim,ncol = 18)
+    for (j in 1:nsim){
+      for (i in names(t)){
+        #print(i)
+        mat[j,as.numeric(i)] = sum(rbinom(t[[i]],1,true_fatal[[as.numeric(i)]]))/(t[[i]]) #!!!!!!
+      }# need to used rstan to get the pi
+    } 
+    t1 = unclass(table(t(apply(mat, 1, order)[ 1, ])))
+    for (i in names(t1)){
+      week[i]=t1[[i]]/nsim
+    }
+    response = rbind(response,week)
+    nweek=nweek+1
+    size = size-10
+    print(size)
+    return(after1week(response,nweek,size))
+  }else{
+      return(response)
+    }
+}  
+
+true_fatal=c(rep(0.15,6),rep(0.4,12))
+ntrt=18
+nweek=2
+size=250
+instance(250,true_fatal,18)
+after1week(response,2,250)
+Primary_agent = c(rep("P1",6),rep("P2",5),rep("P3",4), rep("P4",3))
+agent = c("P1", "P2", "P3", "P4", "S1", "S2", "P2", "P3", "P4", "S1", "S2", "P3", "P4", "S1", "S2", "P4", "S1", "S2")
+df = data.frame(Primary_agent,agent)
+model.matrix(~agent,df)
+
+library(rstan)
+ 
+# the regimen number is different from original. how to get y[i]?
+stan_data = list(N = 18, X = model.matrix(~agent, data = stan), y = stan$response,S = stan$Freq,D=c(1,7,12,16),M=c(2,3,4,5,6,8,9,10,11,13,14,15,17,18))
+
+stan_fit = stan(file = "./project_LogisticHierarchical1.stan", data = stan_data,warmup = 50, iter = 100,seed = 1)
+list = rstan::extract(stan_fit)
+list$beta
+
+print(stan_fit)
+
+mean_p = summary(stan_fit)$summary[, "mean"]
+mean_p["alpha"]
+
+
+# for i=j
+death_rate = c(rep(NA,18))
+for (i in c(1,7,12,16)){
+  death_rate[i]=unname(exp(mean_p["alpha"]+mean_p[str_c("beta","[",i,"]")])/(1+exp(mean_p["alpha"]+mean_p[str_c("beta","[",i,"]")])))
+}
+L=c(1:18)
+L1=c(1,7,12,16)
+# for i != j
+for (i in L[!L %in% L1]){
+  # primary agent=1
+  for (j in c(2:6)){
+  death_rate[i]= unname(exp(mean_p["alpha"]+mean_p["beta[1]"]+mean_p[str_c("beta","[",j,"]")]+mean_p[str_c("theta","[",j,"]")])/(1+exp(mean_p["alpha"]+mean_p["beta[1]"]+mean_p[str_c("beta","[",j,"]")]+mean_p[str_c("theta","[",j,"]")])))
+  }
+  # primary agent=2
+  for (j in c(7:11)){
+    death_rate[i]= exp(stan_fit$alpha+stan_fit$beta[2]+stan_fit$beta[j-5]+stan_fit$theta[j])/(1+exp(stan_fit$alpha+stan_fit$beta[2]+stan_fit$beta[j-5]+stan_fit$theta[j]))
+  }
+  # primary agent=3
+  for (j in c(12:15)){
+    death_rate[i]=exp(stan_fit$alpha+stan_fit$beta[3]+stan_fit$beta[j-9]+stan_fit$theta[j])/(1+exp(stan_fit$alpha+stan_fit$beta[3]+stan_fit$beta[j-9]+stan_fit$theta[j]))
+  } 
+  
+  # primary agent=4
+  for (j in c(16:18)){
+    death_rate[i]=exp(stan_fit$alpha+stan_fit$beta[4]+stan_fit$beta[j-12]+stan_fit$theta[j])/(1+exp(stan_fit$alpha+stan_fit$beta[4]+stan_fit$beta[j-12]+stan_fit$theta[j]))
+  }
+}
+death_rate=exp(stan_fit$alpha)
+mean_p = summary(stan_fit)$summary[, "mean"]
+mean_p[1]
+```
+
+
+```{r}
+true_fatal=c(0.15,rep(0.40,3), 0.15,rep(0.4,3), 0.15,rep(0.4,3), 0.15,0.4,0.4,0.15,0.4,0.15)
+
+Primary_agent = c(rep("P1",6),rep("P2",5),rep("P3",4), rep("P4",3))
+
+Primary_agent = c(rep(c("P1", "P2", "P3", "P4"),3),"P1", "P2", "P3", "P1", "P2","P1")
+
+agent = c("P1", "P2", "P3", "P4", "P2", "P3", "P4", "S1", "P3", "P4", "S1", "S2", "P4", "S1", "S2","S1", "S2","S2")
+
+df = data.frame(Primary_agent,agent)
+model.matrix(~agent,df)
+
+library(rstan)
+ 
+# the regimen number is different from original. how to get y[i]?
+stan_data = list(N = 18, X = model.matrix(~agent, data = stan), y = stan$response,S = stan$Freq,D=4,M=18) 
+stan_fit = stan(file = "./project_LogisticHierarchical.stan", data = stan_data,warmup = 50, iter = 100,seed = 1)
+list = rstan::extract(stan_fit)
+list$beta
+
+print(stan_fit)
+```
+
